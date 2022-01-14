@@ -47,13 +47,10 @@ parse exps ops tokens =
   if ty == "$" then
     if (length ops) == 0 then
       head exps
-    else if (length ops) == 1 then
-      if (head ops == "PLUS") then
-        Sum (exps !! 1) (exps !! 0)
-      else
-        Mul (exps !! 1) (exps !! 0)
-    else if (length ops) == 2 then
-      Sum (exps !! 2) (Mul (exps !! 1) (exps !! 0))
+    else if head ops == "PLUS" then
+      parse ([(Sum (exps !! 1) (exps !! 0))] ++ (drop 2 exps)) (drop 1 ops) tokens
+    else if head ops == "MULT" then
+      parse ([(Mul (exps !! 1) (exps !! 0))] ++ (drop 2 exps)) (drop 1 ops) tokens
     else
       Invalid
   else if ty == "NUM" then
@@ -89,8 +86,8 @@ main :: IO ()
 main = do
   line <- getLine
   let tokens = tokenize line
-  print tokens
+  -- print tokens
   let ast = parse [] [] tokens
-  print ast
+  -- print ast
   let val = eval ast
   print val
