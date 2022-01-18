@@ -23,22 +23,23 @@ tokenize str =
     let num = (find_number str) in
       [("NUM", num)] ++ tokenize (drop (length num) str)
   else if next == '+' then
-    [("PLUS", "+")] ++ tokenize (drop 1 str)
+    [("OP", "+")] ++ tokenize (drop 1 str)
   else if next == '*' then
-    [("MULT", "*")] ++ tokenize (drop 1 str)
+    [("OP", "*")] ++ tokenize (drop 1 str)
   else
     []
 
 data Expr = Val Integer
-          | Sum Expr Expr
-          | Mul Expr Expr
+          | BinaryExpr String Expr Expr
           | Invalid
 
 instance Show Expr where
   show (Val a) = show a
-  show (Sum a b) = "(" ++ show a ++ "+" ++ show b ++ ")"
-  show (Mul a b) = "(" ++ show a ++ "*" ++ show b ++ ")"
+  show (BinaryExpr op a b) = "(" ++ show a ++ op ++ show b ++ ")"
   show (Invalid) = "INVALID"
+
+precedence "+" = 1
+precedence "*" = 2
 
 parse :: [Expr] -> [String] -> [(String, String)] -> Expr
 
@@ -47,40 +48,25 @@ parse exps ops tokens =
   if ty == "$" then
     if (length ops) == 0 then
       head exps
-    else if head ops == "PLUS" then
-      parse ([(Sum (exps !! 1) (exps !! 0))] ++ (drop 2 exps)) (drop 1 ops) tokens
-    else if head ops == "MULT" then
-      parse ([(Mul (exps !! 1) (exps !! 0))] ++ (drop 2 exps)) (drop 1 ops) tokens
     else
-      Invalid
+      parse ([(BinaryExpr (head ops) (exps !! 1) (exps !! 0))] ++ (drop 2 exps)) (drop 1 ops) tokens
   else if ty == "NUM" then
     parse ([(Val (read text :: Integer))] ++ exps) ops (drop 1 tokens)
     -- Val (read text :: Integer)
-  else if ty == "PLUS" then
+  else if ty == "OP" then
     if (length ops) == 0 then
-      parse exps ["PLUS"] (drop 1 tokens)
-    else if (head ops) == "PLUS" then
-      parse ([(Sum (exps !! 1) (exps !! 0))] ++ (drop 2 exps)) (drop 1 ops) tokens
-    else if (head ops) == "MULT" then
-      parse ([(Mul (exps !! 1) (exps !! 0))] ++ (drop 2 exps)) (drop 1 ops) tokens
+      parse exps [text] (drop 1 tokens)
+    else if precedence (head ops) >= precedence text then
+      parse ([(BinaryExpr (head ops) (exps !! 1) (exps !! 0))] ++ (drop 2 exps)) (drop 1 ops) tokens
     else
-      Invalid
-  else if ty == "MULT" then
-    if (length ops) == 0 then
-      parse exps ["MULT"] (drop 1 tokens)
-    else if (head ops) == "PLUS" then
-      parse exps (["MULT"] ++ ops) (drop 1 tokens)
-    else if (head ops) == "MULT" then
-      parse ([(Mul (exps !! 1) (exps !! 0))] ++ (drop 2 exps)) (drop 1 ops) tokens
-    else
-      Invalid
+      parse exps ([text] ++ ops) (drop 1 tokens)
   else
     Invalid
 
 eval :: Expr -> Integer
 eval (Val a) = a
-eval (Sum a b) = eval a + eval b
-eval (Mul a b) = eval a * eval b
+eval (BinaryExpr "+" a b) = eval a + eval b
+eval (BinaryExpr "*" a b) = eval a * eval b
 
 main :: IO ()
 main = do
