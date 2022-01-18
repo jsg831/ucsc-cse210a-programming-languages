@@ -26,6 +26,8 @@ tokenize str =
     [("OP", "+")] ++ tokenize (drop 1 str)
   else if next == '*' then
     [("OP", "*")] ++ tokenize (drop 1 str)
+  else if next == '%' then
+    [("OP", "%")] ++ tokenize (drop 1 str)
   else
     []
 
@@ -40,6 +42,7 @@ instance Show Expr where
 
 precedence "+" = 1
 precedence "*" = 2
+precedence "%" = 2
 
 parse :: [Expr] -> [String] -> [(String, String)] -> Expr
 
@@ -67,6 +70,7 @@ eval :: Expr -> Integer
 eval (Val a) = a
 eval (BinaryExpr "+" a b) = eval a + eval b
 eval (BinaryExpr "*" a b) = eval a * eval b
+eval (BinaryExpr "%" a b) = eval a `mod` eval b
 
 main :: IO ()
 main = do
