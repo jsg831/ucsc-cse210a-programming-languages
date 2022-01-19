@@ -19,9 +19,11 @@
 ":="     { return ASSIGN; }
 "{"      { return LBRACE; }
 "}"      { return RBRACE; }
+"["      { return LBRACK; }
+"]"      { return RBRACK; }
 "("      { return LPAREN; }
 ")"      { return RPAREN; }
--?[0-9]+ { yylval.value = atoi(yytext); return NUM; }
+[0-9]+ { yylval.value = atoi(yytext); return NUM; }
 
 "skip"   { return SKIP; }
 "if"     { return IF; }

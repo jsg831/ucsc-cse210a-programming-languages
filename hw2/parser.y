@@ -76,12 +76,39 @@ struct Bool : public Expr {
     int eval(State *state) { return (int)value; }
 };
 
-struct Identifier : public Expr {
+struct Variable : public Expr {
+  public:
+    virtual void set(State* state, int value) = 0;
+};
+
+struct Identifier : public Variable {
   public:
     Identifier(char *text) { this->name = text; }
     std::string name;
     void print() { std::cout << name; }
     int eval(State *state) { return state->get(name); }
+    void set(State *state, int value) { state->set(name, value); }
+};
+
+struct Array : public Variable {
+  public:
+    Array(std::string name, Expr *expr) : name(name), expr(expr) {}
+    std::string name;
+    Expr *expr;
+    void print() {
+      std::cout << name;
+      std::cout << "[";
+      expr->print();
+      std::cout << "]";
+    }
+    int eval(State *state) {
+      std::string index = std::to_string(expr->eval(state));
+      return state->get(name + "[" + index + "]");
+    }
+    void set(State *state, int value) {
+      std::string index = std::to_string(expr->eval(state));
+      state->set(name + "[" + index + "]", value);
+    }
 };
 
 struct BinaryExpr : public Expr {
@@ -179,18 +206,16 @@ struct CmdSkip : public Cmd {
 
 struct CmdAssign : public Cmd {
   public:
-    CmdAssign(char *id_name, Expr *expr) : expr(expr) {
-      id = new Identifier(id_name);
-    }
-    Identifier *id;
+    CmdAssign(Variable *variable, Expr *expr) : variable(variable), expr(expr) {}
+    Variable *variable;
     Expr *expr;
     void print() {
-      id->print();
+      variable->print();
       std::cout << ":=";
       expr->print();
     }
     void eval(State *state) {
-      state->set(id->name, expr->eval(state));
+      variable->set(state, expr->eval(state));
     }
 };
 
@@ -244,6 +269,7 @@ struct CmdWhile : public Cmd {
 %token EQ LT NOT AND OR
 %token PLUS MINUS MULT
 %token LBRACE RBRACE
+%token LBRACK RBRACK
 %token LPAREN RPAREN
 %token SKIP
 %token ASSIGN
@@ -253,6 +279,7 @@ struct CmdWhile : public Cmd {
 %union {
   struct State *state;
   struct Cmd *cmd;
+  struct Variable *variable;
   struct Expr *expr;
   char *text;
   int value;
@@ -260,7 +287,8 @@ struct CmdWhile : public Cmd {
 
 %type <state> program
 %type <cmd> cmd block
-%type <expr> aexp bexp
+%type <variable> variable
+%type <expr> aexp bexp 
 %type <value> NUM
 %type <text> ID
 
@@ -289,7 +317,7 @@ cmd : LBRACE block RBRACE
         { $$ = $2; }
     | SKIP
         { $$ = new CmdSkip(); }
-    | ID ASSIGN aexp
+    | variable ASSIGN aexp
         { $$ = new CmdAssign($1, $3); }
     | IF bexp THEN cmd ELSE cmd
         { $$ = new CmdIf($2, $4, $6); }
@@ -326,10 +354,17 @@ aexp : LPAREN aexp RPAREN
         { $$ = new BinaryExpr($1, $3, Minus); }
      | aexp MULT aexp
         { $$ = new BinaryExpr($1, $3, Multiply); }
+     | MINUS NUM
+        { $$ = new Num(-$2); }
      | NUM
         { $$ = new Num($1); } 
-     | ID
+     | variable
+        { $$ = $1; }
+
+variable : ID
         { $$ = new Identifier($1); }
+         | ID LBRACK aexp RBRACK
+        { $$ = new Array($1, $3); }
 
 %%
 
