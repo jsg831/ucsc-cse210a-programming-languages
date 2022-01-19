@@ -1,6 +1,7 @@
 %{
 
 #include <iostream>
+#include <map>
 #include <string>
 #include <unordered_map>
 
@@ -32,9 +33,31 @@ std::unordered_map<Operator, std::string> op_literal =
   { Or       , "∨" }
 };
 
+struct State {
+  protected:
+    std::unordered_map<std::string, int> memory;
+  public:
+    void print() {
+      std::map<std::string, int> key_val(memory.begin(), memory.end());
+      std::cout << "{";
+      for (auto it = key_val.begin(); it != key_val.end(); it++) {
+        if (it != key_val.begin()) std::cout << ", ";
+        std::cout << it->first << " → " << it->second;
+      }
+      std::cout << "}" << std::endl;
+    }
+    void set(std::string name, int value) { memory[name] = value; }
+    int get(std::string name) {
+      if (memory.count(name))
+        return memory[name];
+      return 0;
+    }
+};
+
 struct Expr {
   public:
-    virtual void print() {} 
+    virtual void print() = 0;
+    virtual int eval(State*) = 0;
 };
 
 struct Num : public Expr {
@@ -42,6 +65,7 @@ struct Num : public Expr {
     Num(int num) : value(num) {}
     int value;
     void print() { std::cout << value; }
+    int eval(State *state) { return value; }
 };
 
 struct Bool : public Expr {
@@ -49,6 +73,7 @@ struct Bool : public Expr {
     Bool(bool b) : value(b) {}
     bool value;
     void print() { std::cout << (value ? "true" : "false"); }
+    int eval(State *state) { return (int)value; }
 };
 
 struct Identifier : public Expr {
@@ -56,6 +81,7 @@ struct Identifier : public Expr {
     Identifier(char *text) { this->name = text; }
     std::string name;
     void print() { std::cout << name; }
+    int eval(State *state) { return state->get(name); }
 };
 
 struct BinaryExpr : public Expr {
@@ -71,6 +97,28 @@ struct BinaryExpr : public Expr {
       right->print();
       std::cout << ")";
     }
+    int eval(State *state) {
+      switch (op) {
+        case Plus:
+          return left->eval(state) + right->eval(state);
+        case Minus:
+          return left->eval(state) - right->eval(state);
+        case Multiply:
+          return left->eval(state) * right->eval(state);
+        // NOTE: Bool is converted to Integer
+        //       true -> 1 / false -> 0
+        case Equal:
+          return (int)(left->eval(state) == right->eval(state));
+        case LessThan:
+          return (int)(left->eval(state) < right->eval(state));
+        case And:
+          return (int)(left->eval(state) && right->eval(state));
+        case Or:
+          return (int)(left->eval(state) || right->eval(state));
+        default:
+          exit(1);
+      }
+    }
 };
 
 struct UnaryExpr : public Expr {
@@ -84,11 +132,20 @@ struct UnaryExpr : public Expr {
       expr->print();
       std::cout << ")";
     }
+    int eval(State *state) {
+      switch (op) {
+        case Not:
+          return !(expr->eval(state));
+        default:
+          exit(1);
+      }
+    }
 };
 
 struct Cmd {
   public:
-    virtual void print() {}
+    virtual void print() = 0;
+    virtual void eval(State*) = 0;
 };
 
 struct CmdComposite : public Cmd {
@@ -103,6 +160,10 @@ struct CmdComposite : public Cmd {
       right->print();
       std::cout << "}";
     }
+    void eval(State *state) {
+      left->eval(state);
+      right->eval(state);
+    }
 };
 
 struct CmdSkip : public Cmd {
@@ -110,6 +171,9 @@ struct CmdSkip : public Cmd {
     CmdSkip() {}
     void print() {
       std::cout << "skip";
+    }
+    void eval(State *state) {
+      // None
     }
 };
 
@@ -124,6 +188,9 @@ struct CmdAssign : public Cmd {
       id->print();
       std::cout << ":=";
       expr->print();
+    }
+    void eval(State *state) {
+      state->set(id->name, expr->eval(state));
     }
 };
 
@@ -141,6 +208,13 @@ struct CmdIf : public Cmd {
       std::cout << " else ";
       second->print();
     }
+    void eval(State *state) {
+      if (cond->eval(state)) {
+        first->eval(state);
+      } else {
+        second->eval(state);
+      }
+    }
 };
 
 struct CmdWhile : public Cmd {
@@ -154,8 +228,12 @@ struct CmdWhile : public Cmd {
       std::cout << " do ";
       cmd->print();
     }
+    void eval(State *state) {
+      while (cond->eval(state)) {
+        cmd->eval(state);
+      }
+    }
 };
-
 
 %}
 
@@ -173,13 +251,15 @@ struct CmdWhile : public Cmd {
 %token WHILE DO
 
 %union {
+  struct State *state;
   struct Cmd *cmd;
   struct Expr *expr;
   char *text;
   int value;
 }
 
-%type <cmd> program cmd block
+%type <state> program
+%type <cmd> cmd block
 %type <expr> aexp bexp
 %type <value> NUM
 %type <text> ID
@@ -197,7 +277,11 @@ struct CmdWhile : public Cmd {
 %%
 
 program : block
-        { $1->print(); std::cout << std::endl; }
+        {
+          $$ = new State();
+          $1->eval($$);
+          $$->print();
+        }
         |
         { $$ = nullptr; }
 
