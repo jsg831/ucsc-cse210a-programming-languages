@@ -14,10 +14,10 @@ lex.yy.c: $(SRC_LEX)
 	$(LEX) $(SRC_LEX)
 
 parser.tab.c: $(SRC_YACC)
-	$(YACC) -d -Wcounterexamples $(SRC_YACC)
+	$(YACC) -d $(SRC_YACC)
 
 $(BIN): lex.yy.c parser.tab.c $(SRC)
-	$(CC) -o $(BIN) $(SRC) lex.yy.c parser.tab.c
+	$(CC) -std=c++14 -o $(BIN) $(SRC) lex.yy.c parser.tab.c
 
 .PHONY: clean
 
