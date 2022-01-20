@@ -1,0 +1,303 @@
+#!/bin/env python3
+
+import sly
+
+# AST Components
+class Expr:
+    pass
+
+class Num(Expr):
+    value: int
+
+    def __init__(self, value):
+        self.value = value
+
+    def __str__(self):
+        return str(self.value)
+
+class Bool(Expr):
+    value: bool
+
+    def __init__(self, value):
+        self.value = value
+
+    def __str__(self):
+        if self.value == True:
+            return "true"
+        return "false"
+
+class Variable(Expr):
+    name: str
+    
+    def __init__(self, text):
+        self.name = text
+
+    def __str__(self):
+        return self.name
+
+class BinaryExpr(Expr):
+    left: Expr
+    right: Expr
+    op: str
+
+    def __init__(self, lexp, rexp, op):
+        self.left = lexp
+        self.right = rexp
+        self.op = op
+
+    def __str__(self):
+        return '(' + str(self.left) + self.op + str(self.right) + ')'
+
+class UnaryExpr(Expr):
+    expr: Expr
+    op: str
+
+    def __init__(self, expr, op):
+        self.expr = expr
+        self.op = op
+
+    def __str__(self):
+        return self.op + str(self.expr)
+
+class Cmd:
+    pass
+
+class CmdComposite(Cmd):
+    left: Cmd
+    right: Cmd
+
+    def __init__(self, left, right):
+        self.left = left
+        self.right = right
+
+    def __str__(self):
+        return str(self.left) + '; ' + str(self.right)
+
+class CmdSkip(Cmd):
+    
+    def __init__(self):
+        pass
+    
+    def __str__(self):
+        return "skip"
+
+class CmdAssign(Cmd):
+    name: str
+    expr: Expr
+
+    def __init__(self, name, expr):
+        self.name = name
+        self.expr = expr
+
+    def __str__(self):
+        return self.name + ' := ' + str(self.expr)
+
+class CmdIf(Cmd):
+    cond: Expr
+    first: Cmd
+    second: Cmd
+
+    def __init__(self, cond, first, second):
+        self.cond = cond
+        self.first = first
+        self.second = second
+
+    def __str__(self):
+        return "if " + str(self.cond) + " then { " + str(self.first) + " } else { " + str(self.second) + " }"
+
+class CmdWhile(Cmd):
+    cond: Expr
+    cmd: Cmd
+
+    def __init__(self, cond, cmd):
+        self.cond = cond
+        self.cmd = cmd
+
+    def __str__(self):
+        return "while " + str(self.cond) + " do { " + str(self.cmd) + " }"
+
+# Tokenizer
+class Lexer(sly.Lexer):
+
+    tokens = {
+        SEMICOLON,
+        MINUS,
+        PLUS,
+        MULT,
+        EQ,
+        NOT,
+        LT,
+        AND,
+        OR,
+        ASSIGN,
+        LBRACE,
+        RBRACE,
+        LPAREN,
+        RPAREN,
+        NUM,
+        SKIP,
+        IF,
+        ELSE,
+        THEN,
+        WHILE,
+        DO,
+        TRUE,
+        FALSE,
+        ID
+    }
+
+    ignore = ' \t\n'
+
+    SEMICOLON = r';'
+    MINUS     = r'-'
+    PLUS      = r'\+'
+    MULT      = r'\*'
+    EQ        = r'='
+    NOT       = r'¬'
+    LT        = r'<'
+    AND       = r'∧'
+    OR        = r'∨'
+    ASSIGN    = r':='
+    LBRACE    = r'{'
+    RBRACE    = r'}'
+    LPAREN    = r'\('
+    RPAREN    = r'\)'
+    NUM       = r'[0-9]+'
+
+    SKIP      = r'skip'
+    IF        = r'if'
+    ELSE      = r'else'
+    THEN      = r'then'
+    WHILE     = r'while'
+    DO        = r'do'
+    TRUE      = r'true'
+    FALSE     = r'false'
+
+    ID        = r'[a-zA-Z_][a-zA-Z0-9_]*'
+
+# Parser
+class Parser(sly.Parser):
+
+    tokens = Lexer.tokens
+
+    precedence = (
+        ('nonassoc', EQ, LT),
+        ('left', OR),
+        ('left', AND),
+        ('right', NOT),
+        ('left', PLUS, MINUS),
+        ('left', MULT)
+    )
+    
+    # program
+    @_('block')
+    def program(self, p):
+        return p.block
+
+    # cmd
+    @_('LBRACE block RBRACE')
+    def cmd(self, p):
+        return p.block
+
+    @_('SKIP')
+    def cmd(self, p):
+        return CmdSkip()
+
+    @_('ID ASSIGN aexp')
+    def cmd(self, p):
+        return CmdAssign(p.ID, p.aexp)
+
+    @_('IF bexp THEN cmd ELSE cmd')
+    def cmd(self, p):
+        return CmdIf(p.bexp, p.cmd0, p.cmd1)
+
+    @_('WHILE bexp DO cmd')
+    def cmd(self, p):
+        return CmdWhile(p.bexp, p.cmd)
+
+
+    # block
+    @_('cmd')
+    def block(self, p):
+        return p.cmd
+    
+    @_('cmd SEMICOLON block')
+    def block(self, p):
+        return CmdComposite(p.cmd, p.block)
+
+    # bexp
+    @_('LPAREN bexp RPAREN')
+    def bexp(self, p):
+        return p.bexp
+
+    @_('aexp EQ aexp')
+    def bexp(self, p):
+        return BinaryExpr(p.aexp0, p.aexp1, '=')
+
+    @_('aexp LT aexp')
+    def bexp(self, p):
+        return BinaryExpr(p.aexp0, p.aexp1, '<')
+
+    @_('NOT bexp')
+    def bexp(self, p):
+        return UnaryExpr(p.bexp, '¬')
+
+    @_('bexp AND bexp')
+    def bexp(self, p):
+        return BinaryExpr(p.bexp0, p.bexp1, '∧')
+
+    @_('bexp OR bexp')
+    def bexp(self, p):
+        return BinaryExpr(p.bexp0, p.bexp1, '∨')
+
+    @_('TRUE')
+    def bexp(self, p):
+        return Bool(True)
+    
+    @_('FALSE')
+    def bexp(self, p):
+        return Bool(False)
+
+    # aexp
+    @_('LPAREN aexp RPAREN')
+    def aexp(self, p):
+        return p.aexp
+
+    @_('aexp PLUS aexp')
+    def aexp(self, p):
+        return BinaryExpr(p.aexp0, p.aexp1, '+')
+
+    @_('aexp MINUS aexp')
+    def aexp(self, p):
+        return BinaryExpr(p.aexp0, p.aexp1, '+')
+
+    @_('aexp MULT aexp')
+    def aexp(self, p):
+        return BinaryExpr(p.aexp0, p.aexp1, '*')
+
+    @_('MINUS NUM')
+    def aexp(self, p):
+        return Num(-int(p.NUM))
+    
+    @_('NUM')
+    def aexp(self, p):
+        return Num(int(p.NUM))
+
+    @_('ID')
+    def aexp(self, p):
+        return Variable(p.ID)
+
+# Evaluation
+
+# Main
+if __name__ == '__main__':
+    lexer = Lexer()
+    parser = Parser()
+    while True:
+        try:
+            text = input('')
+        except EOFError:
+            break
+        if text:
+            ast = parser.parse(lexer.tokenize(text))
+            print(str(ast))
