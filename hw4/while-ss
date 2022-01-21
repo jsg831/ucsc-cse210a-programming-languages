@@ -1,6 +1,25 @@
 #!/bin/env python3
 
+import operator
+
 import sly
+
+class State:
+    memory: dict
+
+    def __init__(self):
+        self.memory = {}
+
+    def set(self, name, value):
+        self.memory[name] = value
+
+    def get(self, name):
+        if name in self.memory:
+            return self.memory[name]
+        return 0
+
+    def __str__(self):
+        return '{' + ', '.join([k + ' → ' + str(v) for (k, v) in sorted(self.memory.items())]) + '}'
 
 # AST Components
 class Expr:
@@ -15,6 +34,9 @@ class Num(Expr):
     def __str__(self):
         return str(self.value)
 
+    def eval(self, state):
+        return self.value
+
 class Bool(Expr):
     value: bool
 
@@ -26,6 +48,9 @@ class Bool(Expr):
             return "true"
         return "false"
 
+    def eval(self, state):
+        return self.value
+
 class Variable(Expr):
     name: str
     
@@ -34,6 +59,9 @@ class Variable(Expr):
 
     def __str__(self):
         return self.name
+
+    def eval(self, state):
+        return state.get(self.name)
 
 class BinaryExpr(Expr):
     left: Expr
@@ -48,6 +76,18 @@ class BinaryExpr(Expr):
     def __str__(self):
         return '(' + str(self.left) + self.op + str(self.right) + ')'
 
+    def eval(self, state):
+        ops = {
+            '+': operator.add,
+            '-': operator.sub,
+            '*': operator.mul,
+            '=': operator.eq,
+            '<': operator.lt,
+            '∧': operator.and_,
+            '∨': operator.or_
+        }
+        return ops[self.op](self.left.eval(state), self.right.eval(state))
+
 class UnaryExpr(Expr):
     expr: Expr
     op: str
@@ -58,6 +98,12 @@ class UnaryExpr(Expr):
 
     def __str__(self):
         return self.op + str(self.expr)
+
+    def eval(self, state):
+        ops = {
+            '¬': operator.not_
+        }
+        return ops[self.op](self.expr.eval(state))
 
 class Cmd:
     pass
@@ -269,7 +315,7 @@ class Parser(sly.Parser):
 
     @_('aexp MINUS aexp')
     def aexp(self, p):
-        return BinaryExpr(p.aexp0, p.aexp1, '+')
+        return BinaryExpr(p.aexp0, p.aexp1, '-')
 
     @_('aexp MULT aexp')
     def aexp(self, p):
@@ -288,6 +334,27 @@ class Parser(sly.Parser):
         return Variable(p.ID)
 
 # Evaluation
+def step(ast, state) -> Cmd:
+    if isinstance(ast, CmdComposite):
+        ast.left = step(ast.left, state)
+        if ast.left == None:
+            return ast.right
+        return ast
+    if isinstance(ast, CmdAssign):
+        state.set(ast.name, ast.expr.eval(state))
+        return CmdSkip()
+    if isinstance(ast, CmdSkip):
+        return None
+    if isinstance(ast, CmdIf):
+        if ast.cond.eval(state):
+            return ast.first
+        else:
+            return ast.second
+    if isinstance(ast, CmdWhile):
+        if ast.cond.eval(state):
+            return CmdComposite(ast.cmd, ast)
+        return CmdSkip()
+
 
 # Main
 if __name__ == '__main__':
@@ -300,4 +367,11 @@ if __name__ == '__main__':
             break
         if text:
             ast = parser.parse(lexer.tokenize(text))
-            print(str(ast))
+            state = State()
+            record = []
+            for i in range(10000):
+                ast = step(ast, state)
+                if ast == None:
+                    break
+                record.append('⇒ ' + str(ast) + ', ' + str(state))
+            print('\n'.join(record))
