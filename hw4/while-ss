@@ -1,5 +1,6 @@
 #!/bin/env python3
 
+import copy
 import operator
 
 import sly
@@ -352,7 +353,7 @@ def step(ast, state) -> Cmd:
             return ast.second
     if isinstance(ast, CmdWhile):
         if ast.cond.eval(state):
-            return CmdComposite(ast.cmd, ast)
+            return CmdComposite(copy.deepcopy(ast.cmd), ast)
         return CmdSkip()
 
 
@@ -368,10 +369,8 @@ if __name__ == '__main__':
         if text:
             ast = parser.parse(lexer.tokenize(text))
             state = State()
-            record = []
             for i in range(10000):
                 ast = step(ast, state)
                 if ast == None:
                     break
-                record.append('⇒ ' + str(ast) + ', ' + str(state))
-            print('\n'.join(record))
+                print('⇒ ' + str(ast) + ', ' + str(state))
