@@ -373,4 +373,4 @@ if __name__ == '__main__':
                 ast = step(ast, state)
                 if ast == None:
                     break
-                print('⇒ ' + str(ast) + ', ' + str(state))
+                print('⇒ ' + str(ast) + ', ' + str(state), flush=True)
